@@ -299,6 +299,14 @@ section li::marker { color: var(--gold); }
 .card-grid-compact .card h3 { font-size: 0.96rem; }
 .card-grid-compact .card p { font-size: 0.82rem; }
 
+/* 공식 참고 기관 */
+.refs { border: 1px solid var(--gold-faint); padding: 20px 24px; background: var(--panel); }
+.refs-list { list-style: none; padding: 0; margin: 0; max-width: none; }
+.refs-list li { border-bottom: 1px solid var(--line); margin: 0; }
+.refs-list li:last-child { border-bottom: 0; }
+.refs-list a { display: block; padding: 9px 2px; }
+.refs-list a::after { content: " ↗"; color: var(--muted); font-size: 0.8em; }
+
 /* 광고 슬롯 — '광고' 라벨로 콘텐츠와 구분, min-height 예약으로 CLS 방지 */
 .ad-slot { margin: 34px 0; }
 .ad-label {
