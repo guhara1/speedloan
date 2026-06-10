@@ -34,6 +34,48 @@ BASELINE_DATE = "2026년 6월"
 # 대표 썸네일 (make_og.py로 생성)
 OG_IMAGE = BASE_URL + "/assets/og-image.png"
 
+# ──────────────────────────── 애드센스 설정 ────────────────────────────
+# 애드센스 승인 후 발급받은 게시자 ID를 입력하고 python3 generate.py 로 재빌드하면
+# 아래 정의된 위치에 광고가 활성화됩니다. 비워두면 광고 코드가 전혀 출력되지 않습니다.
+#   예: ADSENSE_CLIENT = "ca-pub-1234567890123456"
+ADSENSE_CLIENT = ""
+
+# 애드센스에서 '디스플레이 광고' 단위를 만들고 위치별 슬롯 ID를 넣으세요.
+# 슬롯 ID를 비워두면 해당 위치는 자동 형식(data-ad-format=auto)으로만 출력됩니다.
+ADSENSE_SLOTS = {
+    "home_top": "",        # 홈: 히어로 설명문 아래, 대출상품 카드 위
+    "home_middle": "",     # 홈: 신청방식별 대출 비교 아래
+    "home_bottom": "",     # 홈: 최신 대출가이드 아래
+    "article_top": "",     # 글: 제목·바이라인 아래, 본문 시작 전
+    "article_middle": "",  # 글: 본문 중간 (섹션 4개 이상인 긴 글에만)
+    "article_bottom": "",  # 글: 본문 끝, 면책 안내 위
+    "list_bottom": "",     # 목록 페이지: 카드 그리드 아래
+}
+
+
+def ad_slot(name):
+    """광고 슬롯. ADSENSE_CLIENT가 비어 있으면 아무것도 출력하지 않는다.
+
+    - '광고' 라벨로 콘텐츠와 명확히 구분 (메뉴/본문처럼 보이는 배치 금지 정책 준수)
+    - min-height는 CSS에서 예약해 광고 로딩 시 화면 밀림(CLS) 방지
+    """
+    if not ADSENSE_CLIENT:
+        return ""
+    slot = ADSENSE_SLOTS.get(name, "")
+    slot_attr = ' data-ad-slot="%s"' % slot if slot else ""
+    return ('<div class="ad-slot"><span class="ad-label">광고</span>'
+            '<ins class="adsbygoogle" style="display:block" data-ad-client="%s"%s'
+            ' data-ad-format="auto" data-full-width-responsive="true"></ins>'
+            '<script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>'
+            '</div>' % (ADSENSE_CLIENT, slot_attr))
+
+
+def adsense_head():
+    if not ADSENSE_CLIENT:
+        return ""
+    return ('<script async src="https://pagead2.googlesyndication.com/pagead/js/'
+            'adsbygoogle.js?client=%s" crossorigin="anonymous"></script>\n' % ADSENSE_CLIENT)
+
 P = {p["slug"]: p for p in PRODUCTS}
 
 
@@ -171,7 +213,7 @@ def page(url, title, description, body, depth, breadcrumb=None, head_extra="", w
 </html>
 """ % (esc(full_title), esc(description), BASE_URL + url,
        esc(full_title), esc(description), BASE_URL + url, prefix,
-       head_extra,
+       adsense_head() + head_extra,
        nav_html(prefix, url),
        container,
        crumb, body,
@@ -256,19 +298,30 @@ def emit(url, title, description, body, breadcrumb=None, head_extra="", wide=Fal
     URLS.append(url)
 
 
+def sections_with_mid_ad(sections):
+    """본문 섹션 렌더링 + 긴 글(섹션 4개 이상)은 2번째 섹션 뒤에 중간 광고 삽입."""
+    html_out = render_sections(sections)
+    if len(sections) >= 4:
+        marker = '<section id="sec-3">'
+        html_out = html_out.replace(marker, ad_slot("article_middle") + marker, 1)
+    return html_out
+
+
 def product_page(p):
     url = "/loan/%s/" % p["slug"]
     prefix = "../" * 2
     toc = toc_aside(toc_items_for(p["sections"], has_faq=bool(p.get("faq")),
                                   has_related=bool(p.get("related"))))
     body = ('<div class="page-grid">%s'
-            '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s%s</article></div>') % (
+            '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s%s%s%s</article></div>') % (
         toc,
         esc(p["name"]), esc(p["summary"]),
         byline(),
-        render_sections(p["sections"]),
+        ad_slot("article_top"),
+        sections_with_mid_ad(p["sections"]),
         render_faq(p.get("faq")),
         related_cards(prefix, p.get("related", [])),
+        ad_slot("article_bottom"),
         article_disclaimer())
     emit(url, p["name"] + " 조건과 주의사항", p["summary"], body,
          breadcrumb=[("/loan/", "대출상품"), (url, p["name"])], wide=True)
@@ -280,12 +333,14 @@ def article_page(base, label, a):
     related = a.get("related_products", [])
     toc = toc_aside(toc_items_for(a["sections"], has_related=bool(related)))
     body = ('<div class="page-grid">%s'
-            '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s</article></div>') % (
+            '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s%s%s</article></div>') % (
         toc,
         esc(a["name"]), esc(a["summary"]),
         byline(),
-        render_sections(a["sections"]),
+        ad_slot("article_top"),
+        sections_with_mid_ad(a["sections"]),
         related_cards(prefix, related),
+        ad_slot("article_bottom"),
         article_disclaimer())
     emit(url, a["name"], a["summary"], body,
          breadcrumb=[("/%s/" % base, label), (url, a["name"])], wide=True)
@@ -295,8 +350,8 @@ def listing_page(url, title, intro, entries, extra=""):
     prefix = "../" * (url.count("/") - 1)
     cards = "".join('<a class="card" href="%s"><h3>%s</h3><p>%s</p></a>'
                     % (rel(prefix, u), esc(n), esc(d)) for u, n, d in entries)
-    body = '<h1>%s</h1><p class="lead">%s</p><div class="card-grid">%s</div>%s%s' % (
-        esc(title), esc(intro), cards, extra, article_disclaimer())
+    body = '<h1>%s</h1><p class="lead">%s</p><div class="card-grid">%s</div>%s%s%s' % (
+        esc(title), esc(intro), cards, extra, ad_slot("list_bottom"), article_disclaimer())
     emit(url, title, intro, body, breadcrumb=[(url, title)])
 
 
@@ -509,8 +564,14 @@ def home_page():
         ("#trust", "정보 작성 기준"),
         ("#faq", "자주 묻는 질문"),
     ])
-    content = "\n".join([quick, situ, method, check, credit_sec, safety_sec, guides, trust, faq,
-                         article_disclaimer()])
+    content = "\n".join([
+        ad_slot("home_top"),          # 광고 1: 히어로 설명문 아래, 대출상품 카드 위
+        quick, situ, method,
+        ad_slot("home_middle"),       # 광고 2: 신청방식별 대출 비교 아래
+        check, credit_sec, safety_sec, guides,
+        ad_slot("home_bottom"),       # 광고 3: 최신 대출가이드 아래
+        trust, faq,
+        article_disclaimer()])
     body = hero + '\n<div class="page-grid">%s<div class="page-content">%s</div></div>' % (home_toc, content)
     write("/index.html", page("/", HOME_TITLE, HOME_DESC, body, 0, head_extra=home_schema(), wide=True))
     URLS.append("/")
@@ -590,6 +651,11 @@ def build():
     sm.append("</urlset>")
     write("/sitemap.xml", "\n".join(sm) + "\n")
     write("/robots.txt", "User-agent: *\nAllow: /\nSitemap: %s/sitemap.xml\n" % BASE_URL)
+
+    # ads.txt — 애드센스 게시자 ID 설정 시 자동 생성
+    if ADSENSE_CLIENT:
+        pub_id = ADSENSE_CLIENT.replace("ca-", "")
+        write("/ads.txt", "google.com, %s, DIRECT, f08c47fec0942fa0\n" % pub_id)
 
     mirror_to_root()
     print("생성 완료: %d개 페이지 → docs/ 및 저장소 루트" % len(set(URLS)))

@@ -299,6 +299,21 @@ section li::marker { color: var(--gold); }
 .card-grid-compact .card h3 { font-size: 0.96rem; }
 .card-grid-compact .card p { font-size: 0.82rem; }
 
+/* 광고 슬롯 — '광고' 라벨로 콘텐츠와 구분, min-height 예약으로 CLS 방지 */
+.ad-slot { margin: 34px 0; }
+.ad-label {
+  display: block; font-size: 0.68rem; letter-spacing: 0.24em;
+  color: var(--muted); margin-bottom: 6px; text-align: center;
+}
+.ad-slot .adsbygoogle {
+  display: block; min-height: 280px;
+  background: rgba(255, 255, 255, .02);
+  border: 1px solid var(--line);
+}
+@media (max-width: 920px) {
+  .ad-slot .adsbygoogle { min-height: 250px; }
+}
+
 /* 안내 박스 */
 .notice {
   background: transparent; border: 1px solid var(--gold-soft);
