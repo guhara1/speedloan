@@ -30,6 +30,7 @@ BASE_URL = "https://speedloan.pages.dev"
 
 # 콘텐츠 정보 기준일 — 내용을 갱신할 때마다 함께 갱신하세요
 BASELINE_DATE = "2026년 6월"
+ISO_DATE = "2026-06-10"  # 구조화 데이터(dateModified)·sitemap(lastmod)용
 
 # 대표 썸네일 (make_og.py로 생성)
 OG_IMAGE = BASE_URL + "/assets/og-image.png"
@@ -280,6 +281,57 @@ def article_disclaimer():
     return ('<div class="notice"><p>%s</p></div>' % esc(DISCLAIMER))
 
 
+# 공식 참고 기관 — E-E-A-T 신뢰 신호(외부 인용)이자 독자에게 실질 도움이 되는 출처 안내
+REFERENCES = [
+    ("금융소비자정보포털 파인 — 제도권 금융회사 조회", "https://fine.fss.or.kr"),
+    ("금융감독원 — 불법사금융 신고·상담 1332", "https://www.fss.or.kr"),
+    ("서민금융진흥원 — 정책 서민금융 상담 1397", "https://www.kinfa.or.kr"),
+    ("신용회복위원회 — 채무조정 상담 1600-5500", "https://www.ccrs.or.kr"),
+    ("금융위원회 — 대출 규제·제도 발표", "https://www.fsc.go.kr"),
+]
+
+
+def references_box():
+    lis = "".join(
+        '<li><a href="%s" target="_blank" rel="noopener">%s</a></li>' % (u, esc(n))
+        for n, u in REFERENCES)
+    return ('<section class="refs" id="refs"><h2>공식 참고 기관</h2>'
+            '<p>본 사이트의 콘텐츠는 아래 공공·공식 기관의 공개 자료를 참고하여 작성하며, '
+            '구체적인 조건과 최신 제도는 해당 기관에서 직접 확인하시기 바랍니다.</p>'
+            '<ul class="refs-list">%s</ul></section>' % lis)
+
+
+def breadcrumb_schema(url, breadcrumb):
+    items = [{"@type": "ListItem", "position": 1, "name": "홈", "item": BASE_URL + "/"}]
+    for i, (u, n) in enumerate(breadcrumb, 2):
+        items.append({"@type": "ListItem", "position": i, "name": n, "item": BASE_URL + u})
+    return {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": items}
+
+
+def article_schema(url, title, desc, breadcrumb, faq=None, is_article=True):
+    """글 페이지 구조화 데이터: Article + BreadcrumbList (+ 화면과 일치하는 FAQPage)."""
+    data = [breadcrumb_schema(url, breadcrumb)]
+    if is_article:
+        data.insert(0, {
+            "@context": "https://schema.org", "@type": "Article",
+            "headline": title, "description": desc,
+            "image": OG_IMAGE,
+            "inLanguage": "ko",
+            "author": {"@type": "Person", "name": "%s 운영자" % SITE_NAME,
+                       "url": BASE_URL + "/about/author/"},
+            "publisher": {"@type": "Organization", "name": SITE_NAME, "url": BASE_URL + "/",
+                          "logo": {"@type": "ImageObject", "url": OG_IMAGE}},
+            "datePublished": ISO_DATE, "dateModified": ISO_DATE,
+            "mainEntityOfPage": BASE_URL + url})
+    if faq:
+        data.append({"@context": "https://schema.org", "@type": "FAQPage",
+                     "mainEntity": [{"@type": "Question", "name": q,
+                                     "acceptedAnswer": {"@type": "Answer", "text": a}}
+                                    for q, a in faq]})
+    return "".join('<script type="application/ld+json">%s</script>\n'
+                   % json.dumps(d, ensure_ascii=False) for d in data)
+
+
 def write(path, content):
     full = os.path.join(OUT, path.lstrip("/"))
     os.makedirs(os.path.dirname(full), exist_ok=True)
@@ -310,40 +362,50 @@ def sections_with_mid_ad(sections):
 def product_page(p):
     url = "/loan/%s/" % p["slug"]
     prefix = "../" * 2
-    toc = toc_aside(toc_items_for(p["sections"], has_faq=bool(p.get("faq")),
-                                  has_related=bool(p.get("related"))))
+    title = p["name"] + " 조건과 주의사항"
+    breadcrumb = [("/loan/", "대출상품"), (url, p["name"])]
+    toc_items = toc_items_for(p["sections"], has_faq=bool(p.get("faq")),
+                              has_related=bool(p.get("related")))
+    toc_items.append(("#refs", "공식 참고 기관"))
     body = ('<div class="page-grid">%s'
-            '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s%s%s%s</article></div>') % (
-        toc,
+            '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s%s%s%s%s</article></div>') % (
+        toc_aside(toc_items),
         esc(p["name"]), esc(p["summary"]),
         byline(),
         ad_slot("article_top"),
         sections_with_mid_ad(p["sections"]),
         render_faq(p.get("faq")),
         related_cards(prefix, p.get("related", [])),
+        references_box(),
         ad_slot("article_bottom"),
         article_disclaimer())
-    emit(url, p["name"] + " 조건과 주의사항", p["summary"], body,
-         breadcrumb=[("/loan/", "대출상품"), (url, p["name"])], wide=True)
+    emit(url, title, p["summary"], body, breadcrumb=breadcrumb, wide=True,
+         head_extra=article_schema(url, title, p["summary"], breadcrumb, faq=p.get("faq")))
 
 
 def article_page(base, label, a):
     url = "/%s/%s/" % (base, a["slug"])
     prefix = "../" * 2
+    is_content = base != "about"  # 사이트안내(약관 등)는 Article 스키마·참고기관 박스 제외
     related = a.get("related_products", [])
-    toc = toc_aside(toc_items_for(a["sections"], has_related=bool(related)))
+    breadcrumb = [("/%s/" % base, label), (url, a["name"])]
+    toc_items = toc_items_for(a["sections"], has_related=bool(related))
+    if is_content:
+        toc_items.append(("#refs", "공식 참고 기관"))
     body = ('<div class="page-grid">%s'
-            '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s%s%s</article></div>') % (
-        toc,
+            '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s%s%s%s</article></div>') % (
+        toc_aside(toc_items),
         esc(a["name"]), esc(a["summary"]),
         byline(),
         ad_slot("article_top"),
         sections_with_mid_ad(a["sections"]),
         related_cards(prefix, related),
-        ad_slot("article_bottom"),
+        references_box() if is_content else "",
+        ad_slot("article_bottom") if is_content else "",
         article_disclaimer())
-    emit(url, a["name"], a["summary"], body,
-         breadcrumb=[("/%s/" % base, label), (url, a["name"])], wide=True)
+    emit(url, a["name"], a["summary"], body, breadcrumb=breadcrumb, wide=True,
+         head_extra=article_schema(url, a["name"], a["summary"], breadcrumb,
+                                   is_article=is_content))
 
 
 def listing_page(url, title, intro, entries, extra=""):
@@ -352,7 +414,8 @@ def listing_page(url, title, intro, entries, extra=""):
                     % (rel(prefix, u), esc(n), esc(d)) for u, n, d in entries)
     body = '<h1>%s</h1><p class="lead">%s</p><div class="card-grid">%s</div>%s%s%s' % (
         esc(title), esc(intro), cards, extra, ad_slot("list_bottom"), article_disclaimer())
-    emit(url, title, intro, body, breadcrumb=[(url, title)])
+    emit(url, title, intro, body, breadcrumb=[(url, title)],
+         head_extra=article_schema(url, title, intro, [(url, title)], is_article=False))
 
 
 # ──────────────────────────── 메인페이지 ────────────────────────────
@@ -647,7 +710,7 @@ def build():
     sm = ['<?xml version="1.0" encoding="UTF-8"?>',
           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
     for u in sorted(set(URLS)):
-        sm.append("<url><loc>%s%s</loc></url>" % (BASE_URL, u))
+        sm.append("<url><loc>%s%s</loc><lastmod>%s</lastmod></url>" % (BASE_URL, u, ISO_DATE))
     sm.append("</urlset>")
     write("/sitemap.xml", "\n".join(sm) + "\n")
     write("/robots.txt", "User-agent: *\nAllow: /\nSitemap: %s/sitemap.xml\n" % BASE_URL)
