@@ -9,6 +9,8 @@ docs/ 폴더와 저장소 루트에 정적 HTML 사이트를 생성합니다.
 
 모든 상품 페이지는 /loan/<slug>/ 단일 URL로만 생성되며,
 대상별·신청방식별·담보목적별 메뉴는 같은 URL로 링크만 연결합니다(중복 콘텐츠 방지).
+
+디자인: 다크 럭스 스파 — 다크 네이비 배경, 골드 강조, 좌측 고정 목차(TOC).
 """
 import html
 import json
@@ -125,7 +127,7 @@ def footer_html(prefix):
         '</div></footer>' % (esc(DISCLAIMER), links, SITE_NAME))
 
 
-def page(url, title, description, body, depth, breadcrumb=None, head_extra=""):
+def page(url, title, description, body, depth, breadcrumb=None, head_extra="", wide=False):
     prefix = "../" * depth
     crumb = ""
     if breadcrumb:
@@ -135,6 +137,7 @@ def page(url, title, description, body, depth, breadcrumb=None, head_extra=""):
         parts.append("<span>%s</span>" % esc(breadcrumb[-1][1]))
         crumb = '<nav class="breadcrumb">%s</nav>' % " › ".join(parts)
     full_title = title if title == SITE_NAME else "%s | %s" % (title, SITE_NAME)
+    container = "container wide" if wide else "container"
     return ("""<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -159,7 +162,7 @@ def page(url, title, description, body, depth, breadcrumb=None, head_extra=""):
 %s</head>
 <body>
 %s
-<main class="container">
+<main class="%s">
 %s%s
 </main>
 %s
@@ -170,6 +173,7 @@ def page(url, title, description, body, depth, breadcrumb=None, head_extra=""):
        esc(full_title), esc(description), BASE_URL + url, prefix,
        head_extra,
        nav_html(prefix, url),
+       container,
        crumb, body,
        footer_html(prefix), prefix)).replace("{og}", OG_IMAGE)
 
@@ -181,18 +185,36 @@ def render_body_item(item):
 
 
 def render_sections(sections):
+    """본문 섹션 렌더링. 좌측 목차(TOC)용 앵커 id를 부여한다."""
     out = []
-    for sec in sections:
-        out.append("<section><h2>%s</h2>%s</section>"
-                   % (esc(sec["h"]), "".join(render_body_item(b) for b in sec["body"])))
+    for i, sec in enumerate(sections, 1):
+        out.append('<section id="sec-%d"><h2>%s</h2>%s</section>'
+                   % (i, esc(sec["h"]), "".join(render_body_item(b) for b in sec["body"])))
     return "".join(out)
 
 
-def render_faq(faq):
+def toc_aside(items):
+    """좌측 고정 목차. items = [(anchor, label), ...]"""
+    lis = "".join('<li><a href="%s">%s</a></li>' % (a, esc(n)) for a, n in items)
+    return ('<aside class="toc" aria-label="목차"><div class="toc-inner">'
+            '<p class="toc-title">목차</p><nav><ol>%s</ol></nav>'
+            '</div></aside>' % lis)
+
+
+def toc_items_for(sections, has_faq=False, has_related=False):
+    items = [("#sec-%d" % i, sec["h"]) for i, sec in enumerate(sections, 1)]
+    if has_faq:
+        items.append(("#faq", "자주 묻는 질문"))
+    if has_related:
+        items.append(("#related", "함께 보면 좋은 글"))
+    return items
+
+
+def render_faq(faq, title="자주 묻는 질문"):
     if not faq:
         return ""
     qa = "".join("<details><summary>%s</summary><p>%s</p></details>" % (esc(q), esc(a)) for q, a in faq)
-    return '<section class="faq"><h2>자주 묻는 질문</h2>%s</section>' % qa
+    return '<section class="faq" id="faq"><h2>%s</h2>%s</section>' % (esc(title), qa)
 
 
 def byline():
@@ -208,7 +230,8 @@ def related_cards(prefix, slugs):
         '<a class="card" href="%s"><h3>%s</h3><p>%s</p></a>'
         % (rel(prefix, "/loan/%s/" % s), esc(P[s]["name"]), esc(P[s]["summary"][:58] + "…"))
         for s in slugs if s in P)
-    return '<section class="related"><h2>함께 보면 좋은 글</h2><div class="card-grid">%s</div></section>' % cards
+    return ('<section class="related" id="related"><h2>함께 보면 좋은 글</h2>'
+            '<div class="card-grid">%s</div></section>' % cards)
 
 
 def article_disclaimer():
@@ -227,16 +250,20 @@ def write(path, content):
 URLS = []  # sitemap용
 
 
-def emit(url, title, description, body, breadcrumb=None, head_extra=""):
+def emit(url, title, description, body, breadcrumb=None, head_extra="", wide=False):
     depth = url.count("/") - 1
-    write(url + "index.html", page(url, title, description, body, depth, breadcrumb, head_extra))
+    write(url + "index.html", page(url, title, description, body, depth, breadcrumb, head_extra, wide))
     URLS.append(url)
 
 
 def product_page(p):
     url = "/loan/%s/" % p["slug"]
     prefix = "../" * 2
-    body = '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s%s</article>' % (
+    toc = toc_aside(toc_items_for(p["sections"], has_faq=bool(p.get("faq")),
+                                  has_related=bool(p.get("related"))))
+    body = ('<div class="page-grid">%s'
+            '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s%s</article></div>') % (
+        toc,
         esc(p["name"]), esc(p["summary"]),
         byline(),
         render_sections(p["sections"]),
@@ -244,20 +271,24 @@ def product_page(p):
         related_cards(prefix, p.get("related", [])),
         article_disclaimer())
     emit(url, p["name"] + " 조건과 주의사항", p["summary"], body,
-         breadcrumb=[("/loan/", "대출상품"), (url, p["name"])])
+         breadcrumb=[("/loan/", "대출상품"), (url, p["name"])], wide=True)
 
 
 def article_page(base, label, a):
     url = "/%s/%s/" % (base, a["slug"])
     prefix = "../" * 2
-    body = '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s</article>' % (
+    related = a.get("related_products", [])
+    toc = toc_aside(toc_items_for(a["sections"], has_related=bool(related)))
+    body = ('<div class="page-grid">%s'
+            '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s</article></div>') % (
+        toc,
         esc(a["name"]), esc(a["summary"]),
         byline(),
         render_sections(a["sections"]),
-        related_cards(prefix, a.get("related_products", [])),
+        related_cards(prefix, related),
         article_disclaimer())
     emit(url, a["name"], a["summary"], body,
-         breadcrumb=[("/%s/" % base, label), (url, a["name"])])
+         breadcrumb=[("/%s/" % base, label), (url, a["name"])], wide=True)
 
 
 def listing_page(url, title, intro, entries, extra=""):
@@ -340,7 +371,7 @@ def home_page():
                          for i, (u, n) in enumerate(hero_buttons)))
 
     # 2. 대출상품 빠른 찾기 (전체 27개 카드)
-    quick = ('<section><h2>자주 찾는 대출상품 빠른 찾기</h2>'
+    quick = ('<section id="quick"><h2>자주 찾는 대출상품 빠른 찾기</h2>'
              '<p>아래 카드에서 찾는 대출 유형을 선택하면 일반적인 조건, 필요서류, 주의사항을 확인할 수 있습니다. '
              '같은 이름의 대출이라도 금융회사별로 조건이 다르므로 비교 후 결정하는 것이 안전합니다.</p>'
              '<div class="card-grid card-grid-compact">%s</div></section>' % (
@@ -371,7 +402,7 @@ def home_page():
         '<div class="situ-col"><h3>%s</h3><ul>%s</ul></div>'
         % (esc(t), "".join('<li><a href="%s">%s</a></li>' % (rel(prefix, u), esc(n)) for u, n in links))
         for t, links in situations)
-    situ = ('<section><h2>내 상황에 맞는 대출 알아보기</h2>'
+    situ = ('<section id="situations"><h2>내 상황에 맞는 대출 알아보기</h2>'
             '<p>직업과 소득 형태, 신용 상태에 따라 검토할 수 있는 대출이 다릅니다. '
             '내 상황에 가까운 항목부터 확인해 보세요.</p>'
             '<div class="situ-grid">%s</div></section>' % situ_cols)
@@ -388,7 +419,7 @@ def home_page():
         '<div class="method-item"><a href="%s"><strong>%s</strong></a><p>%s</p></div>'
         % (rel(prefix, "/loan/%s/" % s), esc(P[s]["name"]), esc(d))
         for s, d in method_desc)
-    method = ('<section><h2>신청방식별 대출 차이</h2>'
+    method = ('<section id="methods"><h2>신청방식별 대출 차이</h2>'
               '<p>같은 대출이라도 신청 방법에 따라 절차와 확인사항이 다릅니다. '
               '용어가 비슷해 보여도 차이가 있으므로 신청 전에 구분해 두면 좋습니다.</p>'
               '<div class="method-list">%s</div></section>' % method_items)
@@ -402,7 +433,7 @@ def home_page():
         ("/safety/brokerage-fee/", "불법 중개수수료와 개인정보 요구 여부 — 수수료 선입금이나 과도한 개인정보 요구는 불법·사기 신호입니다."),
     ]
     check_lis = "".join('<li><a href="%s">%s</a></li>' % (rel(prefix, u), esc(t)) for u, t in checks)
-    check = ('<section class="check-section"><h2>대출 전 반드시 확인할 5가지</h2>'
+    check = ('<section class="check-section" id="checklist"><h2>대출 전 반드시 확인할 5가지</h2>'
              '<p>어떤 대출이든 신청 전에 아래 다섯 가지는 반드시 확인하는 것이 좋습니다. '
              '항목을 누르면 자세한 설명으로 이동합니다.</p>'
              '<ol class="check-list">%s</ol>'
@@ -417,7 +448,7 @@ def home_page():
         ("/credit/overdue-check/", "연체 전 확인해야 할 상환 방법"),
         ("/loan/small-loan/", "소액대출도 신용점수에 영향이 있을까?"),
     ]
-    credit_sec = ('<section><h2>신용점수와 상환관리 가이드</h2>'
+    credit_sec = ('<section id="credit"><h2>신용점수와 상환관리 가이드</h2>'
                   '<p>대출은 받는 것보다 갚는 계획이 더 중요합니다. 신용점수가 매겨지는 원리와 '
                   '연체 없이 상환을 관리하는 방법을 정리했습니다.</p>'
                   '<ul class="link-list">%s</ul></section>'
@@ -431,7 +462,7 @@ def home_page():
         ("/safety/brokerage-fee/", "불법 중개수수료를 요구받았을 때 대처법"),
         ("/safety/high-interest/", "고금리 대출 전 확인해야 할 사항"),
     ]
-    safety_sec = ('<section><h2>불법 대출과 금융사기 주의사항</h2>'
+    safety_sec = ('<section id="safety"><h2>불법 대출과 금융사기 주의사항</h2>'
                   '<p>급하게 돈이 필요할수록 불법 사금융과 대출 사기에 노출되기 쉽습니다. '
                   '거래 전에 아래 내용을 꼭 확인하세요. 피해가 의심되면 금융감독원 1332로 신고할 수 있습니다.</p>'
                   '<ul class="link-list">%s</ul></section>'
@@ -440,7 +471,7 @@ def home_page():
     # 8. 최신 대출가이드
     guide_cards = "".join(card("/guide/%s/" % g["slug"], g["name"], g["summary"][:56] + "…")
                           for g in GUIDE_ARTICLES[:6])
-    guides = ('<section><h2>최신 대출가이드</h2>'
+    guides = ('<section id="guides"><h2>최신 대출가이드</h2>'
               '<p>대출 기초 용어부터 한도와 금리가 정해지는 원리, 필요서류, 거절 사유까지 — '
               '대출을 처음 알아보는 분을 위한 가이드입니다. 각 글에는 정보 기준일을 표시하며 제도 변경 시 갱신합니다.</p>'
               '<div class="card-grid">%s</div>'
@@ -451,7 +482,7 @@ def home_page():
     trust_links = [("/about/author/", "작성자 소개"), ("/about/editorial/", "콘텐츠 작성 기준"),
                    ("/about/disclaimer/", "면책고지"), ("/about/contact/", "문의하기"),
                    ("/about/privacy/", "개인정보처리방침")]
-    trust = ('<section class="trust-box"><h2>이 사이트의 금융정보 작성 기준</h2>'
+    trust = ('<section class="trust-box" id="trust"><h2>이 사이트의 금융정보 작성 기준</h2>'
              '<ul>'
              '<li>본 사이트는 대출을 직접 제공하거나 중개하지 않습니다.</li>'
              '<li>모든 콘텐츠는 일반적인 금융정보 제공을 목적으로 작성됩니다.</li>'
@@ -465,11 +496,23 @@ def home_page():
     # 10. FAQ (구조화 데이터와 동일한 내용)
     faq_html = "".join("<details><summary>%s</summary><p>%s</p></details>" % (esc(q), esc(a))
                        for q, a in HOME_FAQ)
-    faq = '<section class="faq"><h2>대출정보 자주 묻는 질문</h2>%s</section>' % faq_html
+    faq = '<section class="faq" id="faq"><h2>대출정보 자주 묻는 질문</h2>%s</section>' % faq_html
 
-    body = "\n".join([hero, quick, situ, method, check, credit_sec, safety_sec, guides, trust, faq,
-                      article_disclaimer()])
-    write("/index.html", page("/", HOME_TITLE, HOME_DESC, body, 0, head_extra=home_schema()))
+    home_toc = toc_aside([
+        ("#quick", "대출상품 빠른 찾기"),
+        ("#situations", "상황에 맞는 대출"),
+        ("#methods", "신청방식별 차이"),
+        ("#checklist", "대출 전 확인 5가지"),
+        ("#credit", "신용·상환관리"),
+        ("#safety", "금융사기 주의"),
+        ("#guides", "최신 대출가이드"),
+        ("#trust", "정보 작성 기준"),
+        ("#faq", "자주 묻는 질문"),
+    ])
+    content = "\n".join([quick, situ, method, check, credit_sec, safety_sec, guides, trust, faq,
+                         article_disclaimer()])
+    body = hero + '\n<div class="page-grid">%s<div class="page-content">%s</div></div>' % (home_toc, content)
+    write("/index.html", page("/", HOME_TITLE, HOME_DESC, body, 0, head_extra=home_schema(), wide=True))
     URLS.append("/")
 
 
