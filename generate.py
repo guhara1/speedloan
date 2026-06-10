@@ -103,7 +103,7 @@ def nav_html(prefix, current_url):
     return (
         '<header class="site-header">'
         '<div class="header-inner">'
-        '<a class="logo" href="%s">⚡ %s</a>'
+        '<a class="logo" href="%s"><span class="logo-mark">✦</span> %s</a>'
         '<button class="nav-toggle" aria-label="메뉴 열기"><span></span><span></span><span></span></button>'
         '<nav class="main-nav"><ul class="nav-list">%s</ul></nav>'
         '</div></header>' % (rel(prefix, "/"), SITE_NAME, "".join(items)))
@@ -152,6 +152,9 @@ def page(url, title, description, body, depth, breadcrumb=None, head_extra=""):
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="대출상품 조건과 신용관리 정보를 정리한 생활금융 가이드">
 <meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="%sassets/style.css">
 %s</head>
 <body>
