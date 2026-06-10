@@ -29,6 +29,9 @@ BASE_URL = "https://speedloan.pages.dev"
 # 콘텐츠 정보 기준일 — 내용을 갱신할 때마다 함께 갱신하세요
 BASELINE_DATE = "2026년 6월"
 
+# 대표 썸네일 (make_og.py로 생성)
+OG_IMAGE = BASE_URL + "/assets/og-image.png"
+
 P = {p["slug"]: p for p in PRODUCTS}
 
 
@@ -132,7 +135,7 @@ def page(url, title, description, body, depth, breadcrumb=None, head_extra=""):
         parts.append("<span>%s</span>" % esc(breadcrumb[-1][1]))
         crumb = '<nav class="breadcrumb">%s</nav>' % " › ".join(parts)
     full_title = title if title == SITE_NAME else "%s | %s" % (title, SITE_NAME)
-    return """<!DOCTYPE html>
+    return ("""<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
@@ -144,6 +147,11 @@ def page(url, title, description, body, depth, breadcrumb=None, head_extra=""):
 <meta property="og:title" content="%s">
 <meta property="og:description" content="%s">
 <meta property="og:url" content="%s">
+<meta property="og:image" content="{og}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="대출상품 조건과 신용관리 정보를 정리한 생활금융 가이드">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="%sassets/style.css">
 %s</head>
 <body>
@@ -160,7 +168,7 @@ def page(url, title, description, body, depth, breadcrumb=None, head_extra=""):
        head_extra,
        nav_html(prefix, url),
        crumb, body,
-       footer_html(prefix), prefix)
+       footer_html(prefix), prefix)).replace("{og}", OG_IMAGE)
 
 
 def render_body_item(item):
@@ -284,10 +292,10 @@ def home_schema():
     data = [
         {"@context": "https://schema.org", "@type": "WebSite",
          "name": SITE_NAME, "url": BASE_URL + "/",
-         "description": HOME_DESC},
+         "description": HOME_DESC, "image": OG_IMAGE},
         {"@context": "https://schema.org", "@type": "Organization",
          "name": SITE_NAME, "url": BASE_URL + "/",
-         "email": "88smartbro88@gmail.com"},
+         "email": "88smartbro88@gmail.com", "logo": OG_IMAGE},
         {"@context": "https://schema.org", "@type": "FAQPage",
          "mainEntity": [
              {"@type": "Question", "name": q,
@@ -470,7 +478,7 @@ def build():
     os.makedirs(OUT)
 
     # 정적 자원
-    for asset in ("style.css", "script.js"):
+    for asset in ("style.css", "script.js", "og-image.png"):
         shutil.copy(os.path.join(ROOT, "assets", asset), ensure_assets_dir(asset))
 
     home_page()
