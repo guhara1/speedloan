@@ -388,7 +388,25 @@ def build():
     write("/sitemap.xml", "\n".join(sm) + "\n")
     write("/robots.txt", "User-agent: *\nAllow: /\nSitemap: %s/sitemap.xml\n" % BASE_URL)
 
-    print("생성 완료: %d개 페이지 → docs/" % len(set(URLS)))
+    mirror_to_root()
+    print("생성 완료: %d개 페이지 → docs/ 및 저장소 루트" % len(set(URLS)))
+
+
+def mirror_to_root():
+    """docs/ 출력을 저장소 루트에도 복사한다.
+
+    Cloudflare Pages 등에서 빌드 출력 디렉터리를 설정하지 않아도(기본 '/')
+    사이트가 바로 서빙되도록 하기 위함. 출력 디렉터리를 docs로 지정해도 동작한다.
+    """
+    for entry in os.listdir(OUT):
+        src = os.path.join(OUT, entry)
+        dst = os.path.join(ROOT, entry)
+        if os.path.isdir(src):
+            if os.path.exists(dst):
+                shutil.rmtree(dst)
+            shutil.copytree(src, dst)
+        else:
+            shutil.copy(src, dst)
 
 
 def ensure_assets_dir(asset):
