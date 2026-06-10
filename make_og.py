@@ -12,11 +12,11 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = os.path.dirname(os.path.abspath(__file__))
 W, H = 1200, 630
 
-NAVY = (21, 49, 91)
-NAVY2 = (30, 74, 138)
-YELLOW = (250, 204, 21)
+NAVY = (10, 27, 51)
+NAVY2 = (27, 58, 99)
+GOLD = (201, 169, 106)
 WHITE = (255, 255, 255)
-LIGHT = (214, 226, 245)
+LIGHT = (217, 210, 194)
 CARD = (255, 255, 255, 26)
 CARD_LINE = (255, 255, 255, 60)
 
@@ -63,7 +63,7 @@ def main():
         d.rounded_rectangle((x1, y1, x2, y2), radius=16, fill=CARD, outline=CARD_LINE, width=2)
         # 체크 동그라미
         cy = (y1 + y2) // 2
-        d.ellipse((x1 + 18, cy - 19, x1 + 56, cy + 19), fill=YELLOW)
+        d.ellipse((x1 + 18, cy - 19, x1 + 56, cy + 19), fill=GOLD)
         d.line((x1 + 27, cy, x1 + 34, cy + 8), fill=NAVY, width=4)
         d.line((x1 + 34, cy + 8, x1 + 48, cy - 8), fill=NAVY, width=4)
         d.text((x1 + 72, y1 + 16), label, font=f_card, fill=WHITE)
@@ -71,14 +71,15 @@ def main():
         d.rounded_rectangle((x1 + 72, y1 + 56, x2 - 80, y1 + 68), radius=6, fill=(255, 255, 255, 70))
         d.rounded_rectangle((x1 + 72, y1 + 76, x2 - 130, y1 + 86), radius=5, fill=(255, 255, 255, 45))
 
-    # 로고: 번개 + 사이트명
-    bolt = [(86, 60), (64, 106), (78, 106), (60, 148), (104, 96), (88, 96), (106, 60)]
-    d.polygon(bolt, fill=YELLOW)
-    d.text((122, 76), "스피드대출", font=font(40, 800), fill=WHITE)
+    # 로고: 골드 다이아몬드 + 사이트명
+    cx, cy, r = 92, 102, 30
+    d.polygon([(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)], fill=GOLD)
+    d.polygon([(cx, cy - 12), (cx + 12, cy), (cx, cy + 12), (cx - 12, cy)], fill=NAVY)
+    d.text((140, 78), "스피드대출", font=font(40, 700), fill=WHITE)
 
     # 헤드라인
     d.text((80, 208), "대출상품 조건과", font=font(78, 800), fill=WHITE)
-    d.text((80, 308), "신용관리 정보", font=font(78, 800), fill=YELLOW)
+    d.text((80, 308), "신용관리 정보", font=font(78, 800), fill=GOLD)
     d.text((80, 426), "쉽게 정리한 생활금융 가이드", font=font(42, 600), fill=LIGHT)
 
     # 하단 키워드 칩
