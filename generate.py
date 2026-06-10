@@ -5,12 +5,13 @@
     python3 generate.py
 
 content_products.py / content_articles.py / content_about.py 의 데이터를 읽어
-docs/ 폴더에 정적 HTML 사이트를 생성합니다. (GitHub Pages: Settings > Pages > /docs)
+docs/ 폴더와 저장소 루트에 정적 HTML 사이트를 생성합니다.
 
 모든 상품 페이지는 /loan/<slug>/ 단일 URL로만 생성되며,
 대상별·신청방식별·담보목적별 메뉴는 같은 URL로 링크만 연결합니다(중복 콘텐츠 방지).
 """
 import html
+import json
 import os
 import shutil
 
@@ -23,7 +24,10 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(ROOT, "docs")
 
 # 사이트 도메인이 정해지면 여기를 수정하세요 (sitemap.xml, canonical 태그에 사용)
-BASE_URL = "https://speedloan.example.com"
+BASE_URL = "https://speedloan.pages.dev"
+
+# 콘텐츠 정보 기준일 — 내용을 갱신할 때마다 함께 갱신하세요
+BASELINE_DATE = "2026년 6월"
 
 P = {p["slug"]: p for p in PRODUCTS}
 
@@ -61,7 +65,7 @@ NAV = [
 # ──────────────────────────── HTML 조립 ────────────────────────────
 
 def rel(prefix, url):
-    """루트 기준 URL('/loan/')을 상대경로로 변환 (GitHub Pages 하위경로 호환)."""
+    """루트 기준 URL('/loan/')을 상대경로로 변환."""
     if url == "/":
         return prefix + "index.html" if prefix else "./"
     return prefix + url.lstrip("/")
@@ -103,9 +107,10 @@ def nav_html(prefix, current_url):
 
 
 def footer_html(prefix):
-    quick = [("/loan/", "대출상품"), ("/safety/", "금융안전"), ("/guide/", "대출가이드"),
-             ("/about/", "사이트 소개"), ("/about/privacy/", "개인정보처리방침"),
-             ("/about/terms/", "이용약관"), ("/about/disclaimer/", "면책고지"), ("/about/contact/", "문의하기")]
+    quick = [("/about/", "사이트 소개"), ("/about/author/", "작성자 소개"),
+             ("/about/editorial/", "콘텐츠 작성 기준"), ("/about/contact/", "문의하기"),
+             ("/about/privacy/", "개인정보처리방침"), ("/about/terms/", "이용약관"),
+             ("/about/disclaimer/", "면책고지"), ("/about/ads/", "광고·제휴 안내")]
     links = " · ".join('<a href="%s">%s</a>' % (rel(prefix, u), n) for u, n in quick)
     return (
         '<footer class="site-footer">'
@@ -117,7 +122,7 @@ def footer_html(prefix):
         '</div></footer>' % (esc(DISCLAIMER), links, SITE_NAME))
 
 
-def page(url, title, description, body, depth, h1=None, breadcrumb=None):
+def page(url, title, description, body, depth, breadcrumb=None, head_extra=""):
     prefix = "../" * depth
     crumb = ""
     if breadcrumb:
@@ -135,8 +140,12 @@ def page(url, title, description, body, depth, h1=None, breadcrumb=None):
 <title>%s</title>
 <meta name="description" content="%s">
 <link rel="canonical" href="%s">
+<meta property="og:type" content="website">
+<meta property="og:title" content="%s">
+<meta property="og:description" content="%s">
+<meta property="og:url" content="%s">
 <link rel="stylesheet" href="%sassets/style.css">
-</head>
+%s</head>
 <body>
 %s
 <main class="container">
@@ -146,7 +155,9 @@ def page(url, title, description, body, depth, h1=None, breadcrumb=None):
 <script src="%sassets/script.js"></script>
 </body>
 </html>
-""" % (esc(full_title), esc(description), BASE_URL + url, prefix,
+""" % (esc(full_title), esc(description), BASE_URL + url,
+       esc(full_title), esc(description), BASE_URL + url, prefix,
+       head_extra,
        nav_html(prefix, url),
        crumb, body,
        footer_html(prefix), prefix)
@@ -171,6 +182,12 @@ def render_faq(faq):
         return ""
     qa = "".join("<details><summary>%s</summary><p>%s</p></details>" % (esc(q), esc(a)) for q, a in faq)
     return '<section class="faq"><h2>자주 묻는 질문</h2>%s</section>' % qa
+
+
+def byline():
+    return ('<p class="byline">작성·검수: %s 운영자 · 정보 기준일: %s · '
+            '<span>제도 변경 시 내용이 업데이트될 수 있습니다.</span></p>'
+            % (SITE_NAME, BASELINE_DATE))
 
 
 def related_cards(prefix, slugs):
@@ -199,17 +216,18 @@ def write(path, content):
 URLS = []  # sitemap용
 
 
-def emit(url, title, description, body, h1=None, breadcrumb=None):
+def emit(url, title, description, body, breadcrumb=None, head_extra=""):
     depth = url.count("/") - 1
-    write(url + "index.html", page(url, title, description, body, depth, h1, breadcrumb))
+    write(url + "index.html", page(url, title, description, body, depth, breadcrumb, head_extra))
     URLS.append(url)
 
 
 def product_page(p):
     url = "/loan/%s/" % p["slug"]
     prefix = "../" * 2
-    body = '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s</article>' % (
+    body = '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s%s</article>' % (
         esc(p["name"]), esc(p["summary"]),
+        byline(),
         render_sections(p["sections"]),
         render_faq(p.get("faq")),
         related_cards(prefix, p.get("related", [])),
@@ -221,8 +239,9 @@ def product_page(p):
 def article_page(base, label, a):
     url = "/%s/%s/" % (base, a["slug"])
     prefix = "../" * 2
-    body = '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s</article>' % (
+    body = '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s</article>' % (
         esc(a["name"]), esc(a["summary"]),
+        byline(),
         render_sections(a["sections"]),
         related_cards(prefix, a.get("related_products", [])),
         article_disclaimer())
@@ -239,81 +258,211 @@ def listing_page(url, title, intro, entries, extra=""):
     emit(url, title, intro, body, breadcrumb=[(url, title)])
 
 
+# ──────────────────────────── 메인페이지 ────────────────────────────
+
+HOME_H1 = "대출상품 조건과 신용관리 정보를 쉽게 정리한 생활금융 가이드"
+HOME_TITLE = "대출상품 조건과 신용관리 정보 안내"
+HOME_DESC = ("직장인대출, 무직자대출, 비상금대출, 소액대출, 저신용자대출 등 다양한 대출상품의 조건과 "
+             "신용점수, 상환관리, 불법 대출 주의사항을 쉽게 정리한 생활금융 정보 사이트입니다.")
+
+HOME_FAQ = [
+    ("무직자도 대출을 알아볼 수 있나요?",
+     "일부 금융상품은 소득 증빙이 부족한 사람도 조회할 수 있지만, 실제 가능 여부는 신용점수, 기존 대출, 연체 이력, 금융회사 심사 기준에 따라 달라집니다."),
+    ("대출 조회를 하면 신용점수가 떨어지나요?",
+     "일반적인 단순 조회와 실제 대출 신청, 다중 신청 여부에 따라 영향이 다를 수 있습니다. 정확한 내용은 이용하는 금융회사와 신용평가 기준을 확인해야 합니다."),
+    ("당일대출은 정말 가능한가요?",
+     "당일 진행이 가능한 상품도 있을 수 있지만, 심사 시간, 서류 제출, 영업시간, 개인 신용상태에 따라 달라질 수 있습니다."),
+    ("저신용자대출은 무엇을 가장 조심해야 하나요?",
+     "높은 금리, 불법 중개수수료, 선입금 요구, 개인정보 과다 요구, 무등록 업체 여부를 먼저 확인해야 합니다."),
+    ("이 사이트에서 대출 신청이 가능한가요?",
+     "본 사이트는 대출을 직접 제공하거나 중개하지 않으며, 일반적인 금융정보를 안내하는 정보 사이트입니다."),
+]
+
+
+def home_schema():
+    """홈 화면에 실제로 보이는 내용과 일치하는 구조화 데이터."""
+    data = [
+        {"@context": "https://schema.org", "@type": "WebSite",
+         "name": SITE_NAME, "url": BASE_URL + "/",
+         "description": HOME_DESC},
+        {"@context": "https://schema.org", "@type": "Organization",
+         "name": SITE_NAME, "url": BASE_URL + "/",
+         "email": "88smartbro88@gmail.com"},
+        {"@context": "https://schema.org", "@type": "FAQPage",
+         "mainEntity": [
+             {"@type": "Question", "name": q,
+              "acceptedAnswer": {"@type": "Answer", "text": a}}
+             for q, a in HOME_FAQ]},
+    ]
+    return "".join('<script type="application/ld+json">%s</script>\n'
+                   % json.dumps(d, ensure_ascii=False) for d in data)
+
+
 def home_page():
     prefix = ""
-    def cards(slugs):
-        return "".join('<a class="card" href="%s"><h3>%s</h3><p>%s</p></a>'
-                       % (rel(prefix, "/loan/%s/" % s), esc(P[s]["name"]), esc(P[s]["summary"][:60] + "…"))
-                       for s in slugs)
-    def chips(slugs):
-        return "".join('<a class="chip" href="%s">%s</a>'
-                       % (rel(prefix, "/loan/%s/" % s), esc(P[s]["name"])) for s in slugs)
 
-    guides = GUIDE_ARTICLES[:4]
-    guide_cards = "".join('<a class="card" href="%s"><h3>%s</h3><p>%s</p></a>'
-                          % (rel(prefix, "/guide/%s/" % g["slug"]), esc(g["name"]), esc(g["summary"][:60] + "…"))
-                          for g in guides)
-    check_items = [
-        ("월 상환액은 실수령액의 30% 이내인가요?", "/credit/repayment-plan/"),
-        ("정책 서민금융 상품 대상인지 확인했나요?", "/loan/low-credit-loan/"),
-        ("거래 상대가 등록 금융회사인지 조회했나요?", "/safety/illegal-loan/"),
-        ("선입금·수수료 요구는 없나요? (있다면 사기)", "/safety/loan-fraud/"),
-    ]
-    checks = "".join('<li><a href="%s">%s</a></li>' % (rel(prefix, u), esc(t)) for t, u in check_items)
-    faq = [
-        ("대출 조회만 해도 신용점수가 떨어지나요?",
-         "한도·조건 조회는 신용점수에 영향을 주지 않습니다. 실제 신청·실행 기록만 신용평가에 반영되므로, 비교는 충분히 하고 신청은 신중하게 하세요."),
-        ("무직자도 대출이 가능한가요?",
-         "일반 신용대출은 어렵지만 비상금대출, 예·적금/보험 담보대출, 정책 서민금융 등 검토할 수 있는 선택지가 있습니다. 무직자대출 페이지에서 자세히 안내합니다."),
-        ("'무조건 승인' 광고는 믿어도 되나요?",
-         "제도권 금융에 심사 없는 대출은 존재하지 않습니다. 이런 광고는 불법 사금융이므로 절대 연락하지 마시고, 금융안전 메뉴의 구별법을 확인하세요."),
-        ("이 사이트에서 대출을 신청할 수 있나요?",
-         "아니요. 본 사이트는 대출을 제공·중개하지 않는 정보 사이트입니다. 실제 신청은 각 금융회사의 공식 채널을 이용하시기 바랍니다."),
-    ]
-    faq_html = "".join("<details><summary>%s</summary><p>%s</p></details>" % (esc(q), esc(a)) for q, a in faq)
+    def card(url, name, desc):
+        return ('<a class="card" href="%s"><h3>%s</h3><p>%s</p></a>'
+                % (rel(prefix, url), esc(name), esc(desc)))
 
-    body = """
+    def pcard(slug):
+        p = P[slug]
+        return card("/loan/%s/" % slug, p["name"], p["summary"][:52] + "…")
+
+    # 1. 히어로
+    hero_buttons = [
+        ("/target/", "내 조건별 대출 보기"),
+        ("/safety/checklist/", "대출 전 체크리스트 보기"),
+        ("/credit/credit-score/", "신용점수 관리법 보기"),
+        ("/safety/illegal-loan/", "불법 대출 주의사항 보기"),
+    ]
+    hero = """
 <section class="hero">
-<h1>대출, 알아보고 결정하세요</h1>
-<p>%s은 대출상품의 조건·필요서류·주의사항을 쉽게 풀어 안내하는 대출 정보 사이트입니다.<br>
-대출을 제공하거나 중개하지 않으며, 과장 없는 정보만 전합니다.</p>
-<div class="hero-links">
-<a class="btn" href="%s">대출상품 전체보기</a>
-<a class="btn btn-outline" href="%s">대출 전 체크리스트</a>
-</div>
-</section>
+<h1>%s</h1>
+<p>직장인대출, 무직자대출, 비상금대출, 소액대출, 저신용자대출 등 다양한 대출 유형의 조건과 주의사항을
+한눈에 확인할 수 있도록 정리했습니다. 실제 가능 여부와 한도, 금리는 개인 신용상태와 금융회사 심사
+기준에 따라 달라질 수 있습니다.</p>
+<div class="hero-links">%s</div>
+</section>""" % (esc(HOME_H1),
+                 "".join('<a class="btn%s" href="%s">%s</a>'
+                         % ("" if i == 0 else " btn-outline", rel(prefix, u), esc(n))
+                         for i, (u, n) in enumerate(hero_buttons)))
 
-<section><h2>자주 찾는 대출상품</h2><div class="card-grid">%s</div></section>
+    # 2. 대출상품 빠른 찾기 (전체 27개 카드)
+    quick = ('<section><h2>자주 찾는 대출상품 빠른 찾기</h2>'
+             '<p>아래 카드에서 찾는 대출 유형을 선택하면 일반적인 조건, 필요서류, 주의사항을 확인할 수 있습니다. '
+             '같은 이름의 대출이라도 금융회사별로 조건이 다르므로 비교 후 결정하는 것이 안전합니다.</p>'
+             '<div class="card-grid card-grid-compact">%s</div></section>' % (
+                 card("/loan/", "전체대출", "스피드대출에서 다루는 26가지 대출 유형을 한 페이지에서 비교할 수 있습니다.") +
+                 "".join(pcard(p["slug"]) for p in PRODUCTS)))
 
-<section><h2>대상별 대출 바로가기</h2><div class="chip-row">%s</div></section>
+    # 3. 내 상황에 맞는 대출 알아보기
+    situations = [
+        ("직장인이라면", [
+            ("/loan/worker-loan/", "직장인대출 조건"),
+            ("/loan/credit-loan/", "신용대출 확인사항"),
+            ("/loan/refinance-loan/", "대환대출 체크리스트")]),
+        ("소득 증빙이 어렵다면", [
+            ("/loan/jobless-loan/", "무직자대출"),
+            ("/loan/housewife-loan/", "주부대출"),
+            ("/loan/freelancer-loan/", "프리랜서대출"),
+            ("/loan/daily-worker-loan/", "일용직대출")]),
+        ("사업을 운영 중이라면", [
+            ("/loan/business-loan/", "사업자대출"),
+            ("/loan/self-employed-loan/", "자영업자대출"),
+            ("/loan/professional-loan/", "전문직대출")]),
+        ("신용점수가 낮다면", [
+            ("/loan/low-credit-loan/", "저신용자대출"),
+            ("/loan/rehabilitation-loan/", "회생파산대출"),
+            ("/guide/rejection/", "대출 거절 이유")]),
+    ]
+    situ_cols = "".join(
+        '<div class="situ-col"><h3>%s</h3><ul>%s</ul></div>'
+        % (esc(t), "".join('<li><a href="%s">%s</a></li>' % (rel(prefix, u), esc(n)) for u, n in links))
+        for t, links in situations)
+    situ = ('<section><h2>내 상황에 맞는 대출 알아보기</h2>'
+            '<p>직업과 소득 형태, 신용 상태에 따라 검토할 수 있는 대출이 다릅니다. '
+            '내 상황에 가까운 항목부터 확인해 보세요.</p>'
+            '<div class="situ-grid">%s</div></section>' % situ_cols)
 
-<section><h2>신청방식별 대출 바로가기</h2><div class="chip-row">%s</div></section>
+    # 4. 신청방식별 대출 차이
+    method_desc = [
+        ("mobile-loan", "스마트폰 앱으로 조회와 신청이 가능한 대출 유형입니다."),
+        ("online-loan", "방문 없이 인터넷으로 조건을 확인하는 방식입니다."),
+        ("untact-loan", "상담이나 서류 제출 과정이 비대면으로 진행될 수 있는 대출입니다."),
+        ("no-visit-loan", "영업점 방문 없이 진행되는 대출 유형을 말합니다."),
+        ("same-day-loan", "당일 입금을 의미하는 경우가 많지만, 실제 가능 여부는 심사와 영업시간에 따라 달라질 수 있습니다."),
+    ]
+    method_items = "".join(
+        '<div class="method-item"><a href="%s"><strong>%s</strong></a><p>%s</p></div>'
+        % (rel(prefix, "/loan/%s/" % s), esc(P[s]["name"]), esc(d))
+        for s, d in method_desc)
+    method = ('<section><h2>신청방식별 대출 차이</h2>'
+              '<p>같은 대출이라도 신청 방법에 따라 절차와 확인사항이 다릅니다. '
+              '용어가 비슷해 보여도 차이가 있으므로 신청 전에 구분해 두면 좋습니다.</p>'
+              '<div class="method-list">%s</div></section>' % method_items)
 
-<section class="check-section"><h2>대출 전 확인사항</h2>
-<p>대출 신청 버튼을 누르기 전에 아래 네 가지만은 꼭 확인하세요.</p>
-<ul class="check-list">%s</ul>
-<p><a href="%s">→ 전체 체크리스트 보기</a></p>
-</section>
+    # 5. 대출 전 반드시 확인할 5가지
+    checks = [
+        ("/guide/limit-rate/", "실제 금리와 연체이자율 — 광고 속 최저금리가 아니라 내 조건으로 조회한 금리를 확인하세요."),
+        ("/guide/conditions/", "중도상환수수료 여부 — 미리 갚을 때 수수료가 있는지, 면제 조건은 무엇인지 확인하세요."),
+        ("/credit/repayment-plan/", "월 상환금과 상환기간 — 월 상환액이 실수령액의 30%를 넘지 않는지 계산해 보세요."),
+        ("/credit/credit-score/", "기존 대출과 신용점수 영향 — 추가 대출이 신용점수와 추후 대출 한도에 주는 영향을 확인하세요."),
+        ("/safety/brokerage-fee/", "불법 중개수수료와 개인정보 요구 여부 — 수수료 선입금이나 과도한 개인정보 요구는 불법·사기 신호입니다."),
+    ]
+    check_lis = "".join('<li><a href="%s">%s</a></li>' % (rel(prefix, u), esc(t)) for u, t in checks)
+    check = ('<section class="check-section"><h2>대출 전 반드시 확인할 5가지</h2>'
+             '<p>어떤 대출이든 신청 전에 아래 다섯 가지는 반드시 확인하는 것이 좋습니다. '
+             '항목을 누르면 자세한 설명으로 이동합니다.</p>'
+             '<ol class="check-list">%s</ol>'
+             '<p><a href="%s">→ 10가지 전체 체크리스트 보기</a></p></section>'
+             % (check_lis, rel(prefix, "/safety/checklist/")))
 
-<section><h2>최신 대출가이드</h2><div class="card-grid">%s</div>
-<p><a href="%s">→ 대출가이드 전체보기</a></p></section>
+    # 6. 신용점수·상환관리 가이드
+    credit_links = [
+        ("/guide/credit-story/", "신용점수 조회하면 점수가 떨어질까?"),
+        ("/guide/rejection/", "대출 거절되는 대표적인 이유"),
+        ("/loan/refinance-loan/", "대환대출이 항상 유리하지 않은 이유"),
+        ("/credit/overdue-check/", "연체 전 확인해야 할 상환 방법"),
+        ("/loan/small-loan/", "소액대출도 신용점수에 영향이 있을까?"),
+    ]
+    credit_sec = ('<section><h2>신용점수와 상환관리 가이드</h2>'
+                  '<p>대출은 받는 것보다 갚는 계획이 더 중요합니다. 신용점수가 매겨지는 원리와 '
+                  '연체 없이 상환을 관리하는 방법을 정리했습니다.</p>'
+                  '<ul class="link-list">%s</ul></section>'
+                  % "".join('<li><a href="%s">%s</a></li>' % (rel(prefix, u), esc(n)) for u, n in credit_links))
 
-<section class="faq"><h2>자주 묻는 질문</h2>%s</section>
-%s""" % (
-        SITE_NAME,
-        rel(prefix, "/loan/"), rel(prefix, "/safety/checklist/"),
-        cards(POPULAR[:6]),
-        chips(TARGET_MENU),
-        chips(METHOD_MENU),
-        checks, rel(prefix, "/safety/checklist/"),
-        guide_cards, rel(prefix, "/guide/"),
-        faq_html,
-        article_disclaimer())
-    write("/index.html", page("/", SITE_NAME,
-        "대출상품의 조건, 필요서류, 주의사항을 쉽게 안내하는 대출 정보 사이트. 무직자대출, 직장인대출, 비상금대출, 소액대출, 저신용자대출 정보를 과장 없이 정리했습니다.",
-        body, 0))
+    # 7. 금융안전·대출사기 예방
+    safety_links = [
+        ("/safety/illegal-loan/", "불법 대출업체 구별하는 방법"),
+        ("/safety/personal-info/", "대출 상담 전 개인정보 요구 주의사항"),
+        ("/safety/loan-fraud/", "선입금 요구 대출이 위험한 이유"),
+        ("/safety/brokerage-fee/", "불법 중개수수료를 요구받았을 때 대처법"),
+        ("/safety/high-interest/", "고금리 대출 전 확인해야 할 사항"),
+    ]
+    safety_sec = ('<section><h2>불법 대출과 금융사기 주의사항</h2>'
+                  '<p>급하게 돈이 필요할수록 불법 사금융과 대출 사기에 노출되기 쉽습니다. '
+                  '거래 전에 아래 내용을 꼭 확인하세요. 피해가 의심되면 금융감독원 1332로 신고할 수 있습니다.</p>'
+                  '<ul class="link-list">%s</ul></section>'
+                  % "".join('<li><a href="%s">%s</a></li>' % (rel(prefix, u), esc(n)) for u, n in safety_links))
+
+    # 8. 최신 대출가이드
+    guide_cards = "".join(card("/guide/%s/" % g["slug"], g["name"], g["summary"][:56] + "…")
+                          for g in GUIDE_ARTICLES[:6])
+    guides = ('<section><h2>최신 대출가이드</h2>'
+              '<p>대출 기초 용어부터 한도와 금리가 정해지는 원리, 필요서류, 거절 사유까지 — '
+              '대출을 처음 알아보는 분을 위한 가이드입니다. 각 글에는 정보 기준일을 표시하며 제도 변경 시 갱신합니다.</p>'
+              '<div class="card-grid">%s</div>'
+              '<p><a href="%s">→ 대출가이드 전체보기</a></p></section>'
+              % (guide_cards, rel(prefix, "/guide/")))
+
+    # 9. 콘텐츠 신뢰 정보
+    trust_links = [("/about/author/", "작성자 소개"), ("/about/editorial/", "콘텐츠 작성 기준"),
+                   ("/about/disclaimer/", "면책고지"), ("/about/contact/", "문의하기"),
+                   ("/about/privacy/", "개인정보처리방침")]
+    trust = ('<section class="trust-box"><h2>이 사이트의 금융정보 작성 기준</h2>'
+             '<ul>'
+             '<li>본 사이트는 대출을 직접 제공하거나 중개하지 않습니다.</li>'
+             '<li>모든 콘텐츠는 일반적인 금융정보 제공을 목적으로 작성됩니다.</li>'
+             '<li>대출 가능 여부, 한도, 금리, 승인 여부는 개인 신용상태와 금융회사 심사 기준에 따라 달라질 수 있습니다.</li>'
+             '<li>콘텐츠는 금융 관련 공공자료, 금융회사 공시자료, 소비자 보호 자료 등을 참고해 작성하며, '
+             '변경 가능성이 있는 정보는 주기적으로 수정합니다. (정보 기준일: %s)</li>'
+             '</ul><nav class="trust-links">%s</nav></section>'
+             % (esc(BASELINE_DATE),
+                " · ".join('<a href="%s">%s</a>' % (rel(prefix, u), esc(n)) for u, n in trust_links)))
+
+    # 10. FAQ (구조화 데이터와 동일한 내용)
+    faq_html = "".join("<details><summary>%s</summary><p>%s</p></details>" % (esc(q), esc(a))
+                       for q, a in HOME_FAQ)
+    faq = '<section class="faq"><h2>대출정보 자주 묻는 질문</h2>%s</section>' % faq_html
+
+    body = "\n".join([hero, quick, situ, method, check, credit_sec, safety_sec, guides, trust, faq,
+                      article_disclaimer()])
+    write("/index.html", page("/", HOME_TITLE, HOME_DESC, body, 0, head_extra=home_schema()))
     URLS.append("/")
 
+
+# ──────────────────────────── 빌드 ────────────────────────────
 
 def build():
     if os.path.exists(OUT):
