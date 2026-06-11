@@ -35,6 +35,21 @@ ISO_DATE = "2026-06-10"  # 구조화 데이터(dateModified)·sitemap(lastmod)�
 # 대표 썸네일 (make_og.py로 생성)
 OG_IMAGE = BASE_URL + "/assets/og-image.png"
 
+# ──────────────────────────── 검색엔진 소유 확인 ────────────────────────────
+# 각 검색엔진 웹마스터 도구의 소유 확인 메타태그 content 값. 비워두면 출력하지 않음.
+NAVER_SITE_VERIFICATION = "4b552f6426931ec0f360f7a1bf5fcb8f669fb64a"   # 네이버 서치어드바이저
+GOOGLE_SITE_VERIFICATION = ""  # 구글 서치콘솔 (HTML 태그 방식 사용 시 content 값 입력)
+
+
+def verification_meta():
+    tags = []
+    if NAVER_SITE_VERIFICATION:
+        tags.append('<meta name="naver-site-verification" content="%s">' % NAVER_SITE_VERIFICATION)
+    if GOOGLE_SITE_VERIFICATION:
+        tags.append('<meta name="google-site-verification" content="%s">' % GOOGLE_SITE_VERIFICATION)
+    return ("\n".join(tags) + "\n") if tags else ""
+
+
 # ──────────────────────────── 애드센스 설정 ────────────────────────────
 # 애드센스 승인 후 발급받은 게시자 ID를 입력하고 python3 generate.py 로 재빌드하면
 # 아래 정의된 위치에 광고가 활성화됩니다. 비워두면 광고 코드가 전혀 출력되지 않습니다.
@@ -188,7 +203,7 @@ def page(url, title, description, body, depth, breadcrumb=None, head_extra="", w
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>%s</title>
 <meta name="description" content="%s">
-<link rel="canonical" href="%s">
+{verify}<link rel="canonical" href="%s">
 <meta property="og:type" content="website">
 <meta property="og:title" content="%s">
 <meta property="og:description" content="%s">
@@ -223,7 +238,8 @@ def page(url, title, description, body, depth, breadcrumb=None, head_extra="", w
        nav_html(prefix, url),
        container,
        crumb, body,
-       footer_html(prefix), prefix)).replace("{og}", OG_IMAGE).replace("{pre}", prefix)
+       footer_html(prefix), prefix)).replace("{og}", OG_IMAGE).replace("{pre}", prefix) \
+        .replace("{verify}", verification_meta())
 
 
 def render_body_item(item):
@@ -652,8 +668,9 @@ def build():
         shutil.rmtree(OUT)
     os.makedirs(OUT)
 
-    # 정적 자원
-    for asset in ("style.css", "script.js", "og-image.png",
+    # 정적 자원 — 미러링이 루트 assets/를 docs/assets/로 덮어쓰므로,
+    # 소스 assets의 모든 파일을 docs/assets에 포함시켜야 유실되지 않는다.
+    for asset in ("style.css", "script.js", "og-image.png", "favicon.ico",
                   "favicon.svg", "favicon-32.png", "favicon-192.png", "apple-touch-icon.png"):
         shutil.copy(os.path.join(ROOT, "assets", asset), ensure_assets_dir(asset))
     # 일부 크롤러는 /favicon.ico 를 직접 요청하므로 루트에도 둔다
