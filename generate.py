@@ -198,6 +198,11 @@ def page(url, title, description, body, depth, breadcrumb=None, head_extra="", w
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="대출상품 조건과 신용관리 정보를 정리한 생활금융 가이드">
 <meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/svg+xml" href="{pre}assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="{pre}assets/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="{pre}assets/favicon-192.png">
+<link rel="alternate icon" href="{pre}favicon.ico">
+<link rel="apple-touch-icon" href="{pre}assets/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@600;700&display=swap" rel="stylesheet">
@@ -218,7 +223,7 @@ def page(url, title, description, body, depth, breadcrumb=None, head_extra="", w
        nav_html(prefix, url),
        container,
        crumb, body,
-       footer_html(prefix), prefix)).replace("{og}", OG_IMAGE)
+       footer_html(prefix), prefix)).replace("{og}", OG_IMAGE).replace("{pre}", prefix)
 
 
 def render_body_item(item):
@@ -648,8 +653,11 @@ def build():
     os.makedirs(OUT)
 
     # 정적 자원
-    for asset in ("style.css", "script.js", "og-image.png"):
+    for asset in ("style.css", "script.js", "og-image.png",
+                  "favicon.svg", "favicon-32.png", "favicon-192.png", "apple-touch-icon.png"):
         shutil.copy(os.path.join(ROOT, "assets", asset), ensure_assets_dir(asset))
+    # 일부 크롤러는 /favicon.ico 를 직접 요청하므로 루트에도 둔다
+    shutil.copy(os.path.join(ROOT, "assets", "favicon.ico"), os.path.join(OUT, "favicon.ico"))
 
     home_page()
 
