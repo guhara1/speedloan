@@ -50,6 +50,11 @@ def verification_meta():
     return ("\n".join(tags) + "\n") if tags else ""
 
 
+# IndexNow 키 — 네이버 등 IndexNow 지원 검색엔진에 새 URL을 즉시 알릴 때 사용.
+# 키 파일(/{키}.txt)이 사이트에 자동 배치되며, ping_indexnow.py 로 일괄 전송한다.
+INDEXNOW_KEY = "f3a8c1d76e924b05a9d2c4e8b7f01a36"
+
+
 # ──────────────────────────── 애드센스 설정 ────────────────────────────
 # 애드센스 승인 후 발급받은 게시자 ID를 입력하고 python3 generate.py 로 재빌드하면
 # 아래 정의된 위치에 광고가 활성화됩니다. 비워두면 광고 코드가 전혀 출력되지 않습니다.
@@ -217,6 +222,7 @@ def page(url, title, description, body, depth, breadcrumb=None, head_extra="", w
 <link rel="icon" type="image/png" sizes="32x32" href="{pre}assets/favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="{pre}assets/favicon-192.png">
 <link rel="alternate icon" href="{pre}favicon.ico">
+<link rel="alternate" type="application/rss+xml" title="스피드대출 RSS" href="{pre}rss.xml">
 <link rel="apple-touch-icon" href="{pre}assets/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -745,8 +751,49 @@ def build():
         pub_id = ADSENSE_CLIENT.replace("ca-", "")
         write("/ads.txt", "google.com, %s, DIRECT, f08c47fec0942fa0\n" % pub_id)
 
+    # RSS 2.0 피드 — 네이버 서치어드바이저 'RSS 제출'용 (콘텐츠 글 전체)
+    write("/rss.xml", build_rss())
+
+    # IndexNow 키 파일 — 사이트 소유 증명용
+    write("/%s.txt" % INDEXNOW_KEY, INDEXNOW_KEY + "\n")
+
     mirror_to_root()
     print("생성 완료: %d개 페이지 → docs/ 및 저장소 루트" % len(set(URLS)))
+
+
+def build_rss():
+    """RSS 2.0 피드 생성 — 대출상품·신용관리·금융안전·가이드 글 전체."""
+    import datetime
+    pub = datetime.datetime.strptime(ISO_DATE, "%Y-%m-%d").strftime(
+        "%a, %d %b %Y 09:00:00 +0900")
+
+    def x(s):  # XML 이스케이프
+        return html.escape(s, quote=True)
+
+    entries = []
+    for p in PRODUCTS:
+        entries.append(("/loan/%s/" % p["slug"], p["name"] + " 조건과 주의사항", p["summary"]))
+    for base, arts in (("credit", CREDIT_ARTICLES), ("safety", SAFETY_ARTICLES),
+                       ("guide", GUIDE_ARTICLES)):
+        for a in arts:
+            entries.append(("/%s/%s/" % (base, a["slug"]), a["name"], a["summary"]))
+
+    items = []
+    for url, title, desc in entries:
+        loc = BASE_URL + url
+        items.append(
+            "<item><title>%s</title><link>%s</link><guid isPermaLink=\"true\">%s</guid>"
+            "<description>%s</description><pubDate>%s</pubDate></item>"
+            % (x(title), loc, loc, x(desc), pub))
+
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<rss version="2.0"><channel>'
+            "<title>%s</title><link>%s/</link>"
+            "<description>%s</description>"
+            "<language>ko</language><lastBuildDate>%s</lastBuildDate>"
+            "%s</channel></rss>\n"
+            % (x(SITE_NAME + " — 대출상품 조건과 신용관리 정보"), BASE_URL,
+               x(HOME_DESC), pub, "".join(items)))
 
 
 def mirror_to_root():
