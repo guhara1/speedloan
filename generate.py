@@ -430,24 +430,26 @@ def article_page(base, label, a):
     is_content = base != "about"  # 사이트안내(약관 등)는 Article 스키마·참고기관 박스 제외
     set_page_ads(is_content)  # 유틸리티 페이지(약관·개인정보·면책·문의 등)에는 광고 미게재
     related = a.get("related_products", [])
+    faq = a.get("faq")
     breadcrumb = [("/%s/" % base, label), (url, a["name"])]
-    toc_items = toc_items_for(a["sections"], has_related=bool(related))
+    toc_items = toc_items_for(a["sections"], has_faq=bool(faq), has_related=bool(related))
     if is_content:
         toc_items.append(("#refs", "공식 참고 기관"))
     body = ('<div class="page-grid">%s'
-            '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s%s%s%s</article></div>') % (
+            '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s%s%s%s%s</article></div>') % (
         toc_aside(toc_items),
         esc(a["name"]), esc(a["summary"]),
         byline(),
         ad_slot("article_top"),
         sections_with_mid_ad(a["sections"]),
+        render_faq(faq),
         related_cards(prefix, related),
         references_box() if is_content else "",
         ad_slot("article_bottom") if is_content else "",
         article_disclaimer())
     emit(url, a["name"], a["summary"], body, breadcrumb=breadcrumb, wide=True,
          head_extra=article_schema(url, a["name"], a["summary"], breadcrumb,
-                                   is_article=is_content))
+                                   faq=faq, is_article=is_content))
 
 
 def listing_page(url, title, intro, entries, extra="", show_ads=True):
