@@ -59,7 +59,7 @@ INDEXNOW_KEY = "f3a8c1d76e924b05a9d2c4e8b7f01a36"
 # 애드센스 승인 후 발급받은 게시자 ID를 입력하고 python3 generate.py 로 재빌드하면
 # 아래 정의된 위치에 광고가 활성화됩니다. 비워두면 광고 코드가 전혀 출력되지 않습니다.
 #   예: ADSENSE_CLIENT = "ca-pub-1234567890123456"
-ADSENSE_CLIENT = ""
+ADSENSE_CLIENT = "ca-pub-1960947052820601"
 
 # 애드센스에서 '디스플레이 광고' 단위를 만들고 위치별 슬롯 ID를 넣으세요.
 # 슬롯 ID를 비워두면 해당 위치는 자동 형식(data-ad-format=auto)으로만 출력됩니다.
@@ -74,13 +74,26 @@ ADSENSE_SLOTS = {
 }
 
 
+# 현재 렌더링 중인 페이지에 광고를 넣을지 여부.
+# 애드센스 정책상 '콘텐츠 기반이 아닌 페이지'(약관·개인정보·면책·문의 등 유틸리티
+# 페이지와 404 오류 페이지)에는 광고를 게재하지 않는다. 각 페이지 생성 함수가
+# 렌더링 직전에 set_page_ads()로 이 값을 설정한다.
+_PAGE_ADS = True
+
+
+def set_page_ads(on):
+    global _PAGE_ADS
+    _PAGE_ADS = on
+
+
 def ad_slot(name):
-    """광고 슬롯. ADSENSE_CLIENT가 비어 있으면 아무것도 출력하지 않는다.
+    """광고 슬롯. ADSENSE_CLIENT가 비었거나 광고 비허용 페이지면 아무것도 출력하지 않는다.
 
     - '광고' 라벨로 콘텐츠와 명확히 구분 (메뉴/본문처럼 보이는 배치 금지 정책 준수)
     - min-height는 CSS에서 예약해 광고 로딩 시 화면 밀림(CLS) 방지
+    - 콘텐츠가 없는 유틸리티·오류 페이지에는 출력하지 않음(정책 준수)
     """
-    if not ADSENSE_CLIENT:
+    if not ADSENSE_CLIENT or not _PAGE_ADS:
         return ""
     slot = ADSENSE_SLOTS.get(name, "")
     slot_attr = ' data-ad-slot="%s"' % slot if slot else ""
@@ -92,7 +105,7 @@ def ad_slot(name):
 
 
 def adsense_head():
-    if not ADSENSE_CLIENT:
+    if not ADSENSE_CLIENT or not _PAGE_ADS:
         return ""
     return ('<script async src="https://pagead2.googlesyndication.com/pagead/js/'
             'adsbygoogle.js?client=%s" crossorigin="anonymous"></script>\n' % ADSENSE_CLIENT)
@@ -387,6 +400,7 @@ def sections_with_mid_ad(sections):
 
 
 def product_page(p):
+    set_page_ads(True)
     url = "/loan/%s/" % p["slug"]
     prefix = "../" * 2
     title = p["name"] + " 조건과 주의사항"
@@ -414,6 +428,7 @@ def article_page(base, label, a):
     url = "/%s/%s/" % (base, a["slug"])
     prefix = "../" * 2
     is_content = base != "about"  # 사이트안내(약관 등)는 Article 스키마·참고기관 박스 제외
+    set_page_ads(is_content)  # 유틸리티 페이지(약관·개인정보·면책·문의 등)에는 광고 미게재
     related = a.get("related_products", [])
     breadcrumb = [("/%s/" % base, label), (url, a["name"])]
     toc_items = toc_items_for(a["sections"], has_related=bool(related))
@@ -435,7 +450,8 @@ def article_page(base, label, a):
                                    is_article=is_content))
 
 
-def listing_page(url, title, intro, entries, extra=""):
+def listing_page(url, title, intro, entries, extra="", show_ads=True):
+    set_page_ads(show_ads)
     prefix = "../" * (url.count("/") - 1)
     cards = "".join('<a class="card" href="%s"><h3>%s</h3><p>%s</p></a>'
                     % (rel(prefix, u), esc(n), esc(d)) for u, n, d in entries)
@@ -443,6 +459,80 @@ def listing_page(url, title, intro, entries, extra=""):
         esc(title), esc(intro), cards, extra, ad_slot("list_bottom"), article_disclaimer())
     emit(url, title, intro, body, breadcrumb=[(url, title)],
          head_extra=article_schema(url, title, intro, [(url, title)], is_article=False))
+
+
+def editorial(sections):
+    """분류 목록 페이지 하단에 들어가는 고유 편집형 해설 콘텐츠.
+
+    카드 나열만 있는 얇은 '도어웨이' 성격을 없애기 위해, 각 분류 축(대상/신청방식/
+    담보목적)마다 서로 겹치지 않는 독창적인 설명·비교·주의사항을 제공한다.
+    sections = [{"h": 제목, "body": [문단 문자열 또는 리스트]}, ...]
+    """
+    out = ['<div class="listing-guide">']
+    for sec in sections:
+        out.append('<section><h2>%s</h2>%s</section>'
+                   % (esc(sec["h"]), "".join(render_body_item(b) for b in sec["body"])))
+    out.append('</div>')
+    return "".join(out)
+
+
+# ── 분류별 목록 페이지 고유 해설 콘텐츠 (도어웨이 방지: 각 축마다 다른 관점) ──
+TARGET_GUIDE = [
+    {"h": "대상에 따라 대출 심사가 달라지는 이유", "body": [
+        "같은 이름의 대출이라도 신청자의 직업과 소득 형태에 따라 심사 방식과 확인 서류가 크게 달라집니다. "
+        "금융회사는 '얼마나 안정적으로 소득이 발생하고, 그 소득으로 원리금을 감당할 수 있는가'를 중심으로 상환 능력을 평가하기 때문입니다.",
+        "예를 들어 4대보험에 가입된 직장인은 재직·소득 증빙이 비교적 명확한 반면, 프리랜서·일용직·자영업자는 "
+        "소득의 연속성을 어떻게 증명하느냐가 한도와 금리에 큰 영향을 줍니다. 소득 증빙이 어려운 무직자·전업주부는 "
+        "일반 신용대출보다 정책 서민금융 상품을 먼저 검토하는 편이 안전한 경우가 많습니다."]},
+    {"h": "직업·소득 형태별 확인 포인트", "body": [
+        ["직장인 — 재직기간·소득의 안정성, 기존 대출 규모(DSR)가 한도에 영향을 줍니다.",
+         "자영업자·사업자 — 사업소득증명·매출 흐름, 사업 기간, 보증기관(신용보증재단 등) 활용 가능 여부를 확인합니다.",
+         "프리랜서·일용직 — 최근 소득의 연속성을 증빙하는 방법(소득금액증명원, 입금 내역 등)이 핵심입니다.",
+         "무직자·전업주부 — 소득 증빙이 어려우면 햇살론 등 정책 서민금융과 배우자 소득 활용 가능 여부를 먼저 확인합니다.",
+         "저신용자 — 무리한 다중 신청보다 서민금융진흥원(1397) 상담을 통해 제도권 상품부터 알아보는 것이 안전합니다."]]},
+    {"h": "대상별 대출을 알아볼 때 주의할 점", "body": [
+        "'누구나 승인', '무직자도 무조건 가능' 같은 문구는 실제 조건과 다를 수 있으므로 주의해야 합니다. "
+        "소득에 비해 과도한 한도를 권하는 경우, 상환 부담이 커져 오히려 위험할 수 있습니다.",
+        "특히 소득 증빙이 어려운 대상일수록 불법 사금융·대출 사기의 표적이 되기 쉽습니다. "
+        "선입금·중개수수료 요구, 과도한 개인정보 요구가 있다면 거래를 멈추고 금융감독원 1332에 확인하세요."]},
+]
+
+METHOD_GUIDE = [
+    {"h": "신청 방식에 따라 무엇이 달라지나", "body": [
+        "모바일·온라인·비대면·무방문·당일 대출은 '어떤 상품이냐'가 아니라 '어떻게 신청하고 처리하느냐'를 가리키는 표현입니다. "
+        "신청 방식은 주로 서류 제출 방법, 본인 인증 절차, 처리 속도에 영향을 줍니다.",
+        "반대로 실제 한도와 금리는 신청 방식보다 신청자의 신용점수·소득·기존 대출에 따라 결정되는 경우가 대부분입니다. "
+        "'비대면이라서 금리가 더 싸다'는 식의 광고는 그대로 믿기보다 내 조건으로 조회한 결과를 기준으로 판단해야 합니다."]},
+    {"h": "모바일·온라인·비대면·무방문·당일의 차이", "body": [
+        ["모바일대출 — 스마트폰 앱으로 조회·신청·약정까지 진행하는 방식입니다.",
+         "온라인대출 — PC/웹에서 신청서를 작성하고 서류를 업로드하는 방식입니다.",
+         "비대면대출 — 영업점 방문이나 대면 상담 없이 비대면 본인인증으로 진행되는 대출을 폭넓게 가리킵니다.",
+         "무방문대출 — 영업점에 직접 가지 않아도 되는 점을 강조한 표현으로, 비대면과 의미가 겹칩니다.",
+         "당일대출 — '당일 입금'을 강조하지만, 실제 가능 여부는 심사 시간·서류·영업시간·개인 신용상태에 따라 달라집니다."]]},
+    {"h": "비대면·모바일 대출에서 특히 조심할 점", "body": [
+        "편리한 만큼 사기 수법도 비대면 방식을 노립니다. 대출을 빌미로 특정 앱(원격제어 앱 등) 설치를 요구하거나, "
+        "보안카드·OTP 번호 전체, 비밀번호를 요구하는 것은 정상적인 금융회사의 절차가 아닙니다.",
+        "정식 금융회사인지 확인하려면 금융소비자정보포털 '파인'에서 제도권 금융회사 여부를 조회하고, "
+        "문자·링크로 유도하는 앱 설치는 반드시 공식 앱스토어에서 다시 확인한 뒤 진행하세요."]},
+]
+
+PURPOSE_GUIDE = [
+    {"h": "담보대출과 신용대출은 무엇이 다른가", "body": [
+        "대출은 크게 담보 없이 신용만으로 받는 신용대출과, 자동차·부동산 등 자산을 담보로 맡기는 담보대출로 나뉩니다. "
+        "일반적으로 담보가 있으면 한도가 커지고 금리가 낮아질 수 있지만, 상환하지 못하면 담보 자산을 잃을 수 있는 위험이 함께 커집니다.",
+        "따라서 '한도가 크고 금리가 낮다'는 이유만으로 담보대출을 선택하기보다, 상환 계획과 담보 상실 위험을 함께 따져봐야 합니다."]},
+    {"h": "담보·목적별 특징", "body": [
+        ["자동차대출 — 차량을 담보로 하거나 차량 구입 자금을 위한 대출로, 차량 시세와 연식이 한도에 영향을 줍니다.",
+         "부동산대출 — 주택 등 부동산을 담보로 하며, 담보인정비율(LTV) 등 규제와 시세 변동의 영향을 받습니다.",
+         "전당포대출 — 물품을 담보로 소액을 빌리는 방식으로, 금리와 수수료 조건을 특히 꼼꼼히 확인해야 합니다.",
+         "생활비·비상금·소액대출 — 목적이 분명한 소액 신용대출로, 편리하지만 반복 이용 시 신용점수에 영향을 줄 수 있습니다.",
+         "신용·추가대출 — 기존 대출에 더해 받는 경우 총부채(DSR)와 상환 부담이 함께 커진다는 점을 확인해야 합니다."]]},
+    {"h": "담보·목적별 대출 주의사항", "body": [
+        "부동산·자동차 담보대출은 시세가 하락하면 추가 상환을 요구받을 수 있고, 연체가 이어지면 담보가 처분될 수 있습니다. "
+        "목적이 정해진 대출(예: 전세자금·사업자금)을 다른 용도로 쓰면 계약 위반이 될 수 있으므로 자금 용도를 명확히 해야 합니다.",
+        "중도상환수수료 유무와 면제 조건, 총 상환액을 미리 확인하고, 담보 가치·규제·금리는 금융회사와 금융위원회 등 "
+        "공식 자료에서 최신 내용을 직접 확인하시기 바랍니다."]},
+]
 
 
 # ──────────────────────────── 메인페이지 ────────────────────────────
@@ -487,6 +577,7 @@ def home_schema():
 
 
 def home_page():
+    set_page_ads(True)
     prefix = ""
 
     def card(url, name, desc):
@@ -668,6 +759,32 @@ def home_page():
     URLS.append("/")
 
 
+def not_found_page():
+    """404 오류 페이지. 콘텐츠가 없는 페이지이므로 광고를 게재하지 않으며(정책 준수),
+    검색엔진에는 noindex로 표시하고 sitemap에도 포함하지 않는다.
+    사용자가 원하는 정보로 쉽게 이동하도록 주요 섹션 링크를 제공한다."""
+    set_page_ads(False)
+    links = [
+        ("/", "홈으로"),
+        ("/loan/", "대출상품 전체보기"),
+        ("/target/", "대상별 대출"),
+        ("/credit/", "신용·상환관리"),
+        ("/safety/", "금융안전"),
+        ("/guide/", "대출가이드"),
+    ]
+    link_lis = "".join('<li><a href="%s">%s</a></li>' % (rel("", u), esc(n)) for u, n in links)
+    body = ('<section class="notfound"><h1>페이지를 찾을 수 없습니다 (404)</h1>'
+            '<p class="lead">요청하신 주소의 페이지가 없거나, 이동 또는 삭제되었을 수 있습니다. '
+            '아래에서 원하는 정보를 찾아보세요.</p>'
+            '<ul class="link-list">%s</ul>'
+            '<p>대출 관련 공식 상담: 금융감독원 1332 · 서민금융진흥원 1397 · 신용회복위원회 1600-5500</p>'
+            '</section>' % link_lis)
+    html_doc = page("/404.html", "페이지를 찾을 수 없습니다", "요청하신 페이지를 찾을 수 없습니다.",
+                    body, 0, head_extra='<meta name="robots" content="noindex">\n')
+    write("/404.html", html_doc)
+    set_page_ads(True)  # 이후 페이지 생성에 영향이 없도록 기본값 복원
+
+
 # ──────────────────────────── 빌드 ────────────────────────────
 
 def build():
@@ -694,16 +811,19 @@ def build():
                  "스피드대출에서 다루는 모든 대출상품입니다. 각 페이지에서 일반적인 조건, 필요서류, 주의사항을 확인할 수 있습니다.",
                  [("/loan/%s/" % p["slug"], p["name"], p["summary"][:60] + "…") for p in PRODUCTS])
 
-    # 분류별 목록 (같은 상품 URL로 링크만 연결)
+    # 분류별 목록 (같은 상품 URL로 링크만 연결 + 각 축마다 고유 편집형 해설로 도어웨이 방지)
     listing_page("/target/", "대상별 대출",
                  "직장인, 무직자, 주부, 프리랜서, 자영업자 등 내 상황에 맞는 대출 정보를 찾아보세요.",
-                 [("/loan/%s/" % s, P[s]["name"], P[s]["summary"][:60] + "…") for s in TARGET_MENU])
+                 [("/loan/%s/" % s, P[s]["name"], P[s]["summary"][:60] + "…") for s in TARGET_MENU],
+                 extra=editorial(TARGET_GUIDE))
     listing_page("/method/", "신청방식별 대출",
                  "모바일, 온라인, 비대면, 무방문, 당일 — 신청 방법에 따라 달라지는 절차와 주의사항을 안내합니다.",
-                 [("/loan/%s/" % s, P[s]["name"], P[s]["summary"][:60] + "…") for s in METHOD_MENU])
+                 [("/loan/%s/" % s, P[s]["name"], P[s]["summary"][:60] + "…") for s in METHOD_MENU],
+                 extra=editorial(METHOD_GUIDE))
     listing_page("/purpose/", "담보·목적별 대출",
                  "자동차, 부동산, 생활비, 비상금 등 담보와 목적이 분명한 대출 정보를 모았습니다.",
-                 [("/loan/%s/" % s, P[s]["name"], P[s]["summary"][:60] + "…") for s in PURPOSE_MENU])
+                 [("/loan/%s/" % s, P[s]["name"], P[s]["summary"][:60] + "…") for s in PURPOSE_MENU],
+                 extra=editorial(PURPOSE_GUIDE))
 
     # 신용·상환관리
     listing_page("/credit/", "신용·상환관리",
@@ -733,10 +853,13 @@ def build():
     listing_page("/about/", "사이트안내",
                  intro_about["summary"],
                  [("/about/%s/" % a["slug"], a["name"], a["summary"]) for a in ABOUT_PAGES if a["slug"]],
-                 extra=about_extra)
+                 extra=about_extra, show_ads=False)  # 사이트안내는 유틸리티 성격 → 광고 미게재
     for a in ABOUT_PAGES:
         if a["slug"]:
             article_page("about", "사이트안내", a)
+
+    # 404 오류 페이지 (광고 없음, noindex, sitemap 제외)
+    not_found_page()
 
     # sitemap.xml / robots.txt
     sm = ['<?xml version="1.0" encoding="UTF-8"?>',

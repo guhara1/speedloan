@@ -330,6 +330,17 @@ section li::marker { color: var(--gold); }
 }
 .notice p { margin: 0; max-width: none; }
 
+/* 분류 목록 페이지 하단의 편집형 해설 콘텐츠 */
+.listing-guide {
+  margin-top: 44px; padding-top: 32px;
+  border-top: 1px solid var(--gold-faint);
+}
+.listing-guide section:last-child { margin-bottom: 0; }
+
+/* 404 오류 페이지 */
+.notfound { padding: 26px 0 12px; }
+.notfound .link-list { max-width: 46em; }
+
 /* ───── 푸터 ───── */
 .site-footer {
   background: var(--bg-deep); color: var(--muted);
