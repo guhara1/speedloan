@@ -59,7 +59,7 @@ INDEXNOW_KEY = "f3a8c1d76e924b05a9d2c4e8b7f01a36"
 # 애드센스 승인 후 발급받은 게시자 ID를 입력하고 python3 generate.py 로 재빌드하면
 # 아래 정의된 위치에 광고가 활성화됩니다. 비워두면 광고 코드가 전혀 출력되지 않습니다.
 #   예: ADSENSE_CLIENT = "ca-pub-1234567890123456"
-ADSENSE_CLIENT = ""
+ADSENSE_CLIENT = "ca-pub-1960947052820601"
 
 # 애드센스에서 '디스플레이 광고' 단위를 만들고 위치별 슬롯 ID를 넣으세요.
 # 슬롯 ID를 비워두면 해당 위치는 자동 형식(data-ad-format=auto)으로만 출력됩니다.
