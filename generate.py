@@ -15,6 +15,7 @@ docs/ 폴더와 저장소 루트에 정적 HTML 사이트를 생성합니다.
 import html
 import json
 import os
+import re
 import shutil
 
 from content_products import (PRODUCTS, TARGET_MENU, METHOD_MENU, PURPOSE_MENU,
@@ -261,18 +262,34 @@ def page(url, title, description, body, depth, breadcrumb=None, head_extra="", w
         .replace("{verify}", verification_meta())
 
 
-def render_body_item(item):
+# 본문 내부링크 마크업: [[표시문구|/url/]] → 사이트 내부 상대링크(SEO용).
+# 표시문구·URL 외 나머지 텍스트는 그대로 이스케이프되어 안전하다.
+LINK_RE = re.compile(r'\[\[([^|\]]+)\|([^\]]+)\]\]')
+
+
+def render_text(s, prefix=""):
+    """텍스트를 이스케이프하되 [[문구|/url/]] 마크업만 내부 링크(<a>)로 변환."""
+    out, last = [], 0
+    for m in LINK_RE.finditer(s):
+        out.append(esc(s[last:m.start()]))
+        out.append('<a href="%s">%s</a>' % (rel(prefix, m.group(2)), esc(m.group(1))))
+        last = m.end()
+    out.append(esc(s[last:]))
+    return "".join(out)
+
+
+def render_body_item(item, prefix=""):
     if isinstance(item, list):
-        return "<ul>%s</ul>" % "".join("<li>%s</li>" % esc(li) for li in item)
-    return "<p>%s</p>" % esc(item)
+        return "<ul>%s</ul>" % "".join("<li>%s</li>" % render_text(li, prefix) for li in item)
+    return "<p>%s</p>" % render_text(item, prefix)
 
 
-def render_sections(sections):
+def render_sections(sections, prefix=""):
     """본문 섹션 렌더링. 좌측 목차(TOC)용 앵커 id를 부여한다."""
     out = []
     for i, sec in enumerate(sections, 1):
         out.append('<section id="sec-%d"><h2>%s</h2>%s</section>'
-                   % (i, esc(sec["h"]), "".join(render_body_item(b) for b in sec["body"])))
+                   % (i, esc(sec["h"]), "".join(render_body_item(b, prefix) for b in sec["body"])))
     return "".join(out)
 
 
@@ -390,9 +407,9 @@ def emit(url, title, description, body, breadcrumb=None, head_extra="", wide=Fal
     URLS.append(url)
 
 
-def sections_with_mid_ad(sections):
+def sections_with_mid_ad(sections, prefix=""):
     """본문 섹션 렌더링 + 긴 글(섹션 4개 이상)은 2번째 섹션 뒤에 중간 광고 삽입."""
-    html_out = render_sections(sections)
+    html_out = render_sections(sections, prefix)
     if len(sections) >= 4:
         marker = '<section id="sec-3">'
         html_out = html_out.replace(marker, ad_slot("article_middle") + marker, 1)
@@ -414,7 +431,7 @@ def product_page(p):
         esc(p["name"]), esc(p["summary"]),
         byline(),
         ad_slot("article_top"),
-        sections_with_mid_ad(p["sections"]),
+        sections_with_mid_ad(p["sections"], prefix),
         render_faq(p.get("faq")),
         related_cards(prefix, p.get("related", [])),
         references_box(),
@@ -441,7 +458,7 @@ def article_page(base, label, a):
         esc(a["name"]), esc(a["summary"]),
         byline(),
         ad_slot("article_top"),
-        sections_with_mid_ad(a["sections"]),
+        sections_with_mid_ad(a["sections"], prefix),
         render_faq(faq),
         related_cards(prefix, related),
         references_box() if is_content else "",
