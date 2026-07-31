@@ -323,6 +323,76 @@ def byline():
             % (SITE_NAME, BASELINE_DATE))
 
 
+def _wrap_title(title, per_line=13, max_lines=4):
+    """한글 제목을 썸네일용으로 줄바꿈. 부제(— 뒤)는 새 줄에서 시작한다."""
+    # '—'(구분선) 기준으로 주제목/부제 분리 후 각각 폭에 맞춰 줄바꿈
+    chunks = [c.strip() for c in re.split(r"\s*[—–]\s*", title) if c.strip()]
+    lines = []
+    for chunk in chunks:
+        words = chunk.split(" ")
+        cur = ""
+        for w in words:
+            cand = (cur + " " + w).strip()
+            if len(cand) > per_line and cur:
+                lines.append(cur)
+                cur = w
+            else:
+                cur = cand
+            # 한 단어가 너무 길면 강제로 잘라 넘김
+            while len(cur) > per_line:
+                lines.append(cur[:per_line])
+                cur = cur[per_line:]
+        if cur:
+            lines.append(cur)
+    return lines[:max_lines]
+
+
+def article_thumb_svg(title, label):
+    """제목 텍스트를 넣은 브랜드 썸네일(SVG, 1200×630)을 생성한다.
+    외부 폰트·이미지 없이 텍스트만으로 구성해 어떤 환경에서도 그대로 렌더된다."""
+    heading = re.split(r"\s*[—–]\s*", title)[0].strip() or title  # 부제 제외, 핵심 제목만
+    lines = _wrap_title(heading)
+    n = len(lines)
+    fs = 74 if n <= 2 else (64 if n == 3 else 56)   # 줄 수에 따라 글자 크기 조정
+    lh = fs + 18
+    start_y = 300 - (n - 1) * lh / 2                  # 세로 중앙 정렬
+    tspans = "".join(
+        '<text x="90" y="%.0f" font-size="%d" font-weight="700" fill="#f3eedd" '
+        'font-family="\'Noto Serif KR\',\'Nanum Myeongjo\',serif">%s</text>'
+        % (start_y + i * lh, fs, esc(ln)) for i, ln in enumerate(lines))
+    chip_w = len(label) * 26 + 56
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" '
+        'viewBox="0 0 1200 630" role="img" aria-label="%s">'
+        '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
+        '<stop offset="0" stop-color="#081120"/>'
+        '<stop offset="0.55" stop-color="#0e2240"/>'
+        '<stop offset="1" stop-color="#163055"/></linearGradient></defs>'
+        '<rect width="1200" height="630" fill="url(#g)"/>'
+        '<rect x="0" y="0" width="1200" height="10" fill="#c9a96a"/>'
+        '<rect x="90" y="86" rx="24" ry="24" width="%d" height="48" fill="#c9a96a"/>'
+        '<text x="%d" y="119" font-size="26" font-weight="700" fill="#081120" '
+        'font-family="\'Noto Sans KR\',sans-serif">%s</text>'
+        '%s'
+        '<text x="90" y="556" font-size="34" font-weight="700" fill="#c9a96a" '
+        'font-family="\'Noto Serif KR\',serif">✦ %s</text>'
+        '<text x="90" y="592" font-size="22" fill="#b1a890" '
+        'font-family="\'Noto Sans KR\',sans-serif">%s · %s</text>'
+        '</svg>'
+    ) % (esc(title), chip_w, 90 + 28, esc(label), tspans,
+         SITE_NAME, BASE_URL.split("//")[-1], esc(label))
+
+
+def article_hero(base, a, label):
+    """콘텐츠 아티클 상단 썸네일(텍스트 이미지)을 생성·저장하고 <figure> HTML을 반환한다."""
+    thumb_url = "/assets/thumbs/%s-%s.svg" % (base, a["slug"])
+    write(thumb_url, article_thumb_svg(a["name"], label))
+    return ('<figure class="article-hero">'
+            '<img src="%s" width="1200" height="630" loading="eager" '
+            'alt="%s — %s 썸네일" /></figure>'
+            % (rel("../" * 2, thumb_url), esc(a["name"]), esc(label)))
+
+
 def related_cards(prefix, slugs):
     if not slugs:
         return ""
@@ -452,10 +522,12 @@ def article_page(base, label, a):
     toc_items = toc_items_for(a["sections"], has_faq=bool(faq), has_related=bool(related))
     if is_content:
         toc_items.append(("#refs", "공식 참고 기관"))
+    hero = article_hero(base, a, label) if is_content else ""
     body = ('<div class="page-grid">%s'
-            '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s%s%s%s%s</article></div>') % (
+            '<article><h1>%s</h1><p class="lead">%s</p>%s%s%s%s%s%s%s%s%s</article></div>') % (
         toc_aside(toc_items),
         esc(a["name"]), esc(a["summary"]),
+        hero,
         byline(),
         ad_slot("article_top"),
         sections_with_mid_ad(a["sections"], prefix),
